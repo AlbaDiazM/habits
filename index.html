@@ -91,6 +91,13 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;dis
 
 /* DAY DETAIL */
 .ddetail{background:var(--s2);border-radius:14px;padding:14px;margin-top:10px}
+.ddetail-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.ddetail-date{font-family:'Cormorant Garamond',serif;font-size:1rem;color:var(--muted)}
+.edit-badge{font-size:.65rem;color:var(--accent);border:1px solid var(--accent);border-radius:10px;padding:2px 8px;letter-spacing:.06em}
+.ddhrow{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;background:var(--s1);margin-bottom:5px;font-size:.77rem;cursor:pointer;transition:background .15s}
+.ddhrow:hover{background:#1a1a1a}
+.ddhrow.done{background:rgba(62,207,130,.1)}
+.ddhrow.done:hover{background:rgba(62,207,130,.16)}
 .ddrings{display:flex;gap:8px;margin-bottom:12px}
 .ddr{flex:1;background:var(--s1);border-radius:10px;padding:10px;text-align:center}
 .ddrval{font-size:1rem;font-weight:600}
@@ -537,21 +544,61 @@ function renderCal(){
     grid.appendChild(cell);
   }
 }
+// Current day being viewed in calendar detail
+var VIEW_Y, VIEW_M, VIEW_D;
+
 function showDay(y,m,d){
-  var T2=td(),st=(y===T2[0]&&m===T2[1]&&d===T2[2])?ST:ls(y,m,d),box=document.getElementById('ddbox');
+  VIEW_Y=y; VIEW_M=m; VIEW_D=d;
+  renderDayDetail();
+  document.getElementById('ddbox').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function renderDayDetail(){
+  var y=VIEW_Y,m=VIEW_M,d=VIEW_D;
+  var T2=td();
+  var isToday=(y===T2[0]&&m===T2[1]&&d===T2[2]);
+  var st=isToday?ST:ls(y,m,d);
+  var box=document.getElementById('ddbox');
+
+  // Rings summary
   var rh='';
   GK.forEach(function(g){
     var done=H[g].filter(function(h){return st[h.id]}).length;
     var pp=H[g].length?Math.round(done/H[g].length*100):0;
     rh+='<div class="ddr"><div class="ddrval" style="color:'+GC[g]+'">'+pp+'%</div><div class="ddrlbl">'+{base:'Base',body:'Cuerpo',mind:'Mente'}[g]+'</div></div>';
   });
+
+  // Habit rows — all clickable (past or today)
   var hh='';
   ALL.forEach(function(h){
     var done=!!st[h.id];
-    hh+='<div class="ddhrow'+(done?' done':'')+'"><div class="ddcheck">'+(done?'✓':'')+'</div>'+h.emoji+' '+h.label+'</div>';
+    hh+='<div class="ddhrow'+(done?' done':'')+'" onclick="togglePastHabit(''+y+'',''+m+'',''+d+'',''+h.id+'')">'
+      +'<div class="ddcheck">'+(done?'✓':'')+'</div>'+h.emoji+' '+h.label+'</div>';
   });
-  box.innerHTML='<div class="ddetail"><div style="font-family:Cormorant Garamond,serif;font-size:1rem;color:var(--muted);margin-bottom:10px">'+d+' de '+MONS[m]+' '+y+'</div><div class="ddrings">'+rh+'</div>'+hh+'</div>';
-  box.scrollIntoView({behavior:'smooth',block:'start'});
+
+  var dateStr=d+' de '+MONS[m]+' '+y;
+  box.innerHTML='<div class="ddetail">'
+    +'<div class="ddetail-header">'
+    +'<div class="ddetail-date">'+dateStr+'</div>'
+    +'<div class="edit-badge">✎ editable</div>'
+    +'</div>'
+    +'<div class="ddrings">'+rh+'</div>'
+    +hh
+    +'</div>';
+}
+
+function togglePastHabit(y,m,d,id){
+  y=parseInt(y);m=parseInt(m);d=parseInt(d);
+  var T2=td();
+  var isToday=(y===T2[0]&&m===T2[1]&&d===T2[2]);
+  var st=isToday?ST:ls(y,m,d);
+  st[id]=!st[id];
+  ss(y,m,d,st);
+  // If editing today, keep ST in sync
+  if(isToday){ ST=st; updateAll(); }
+  // Re-render detail and calendar
+  renderDayDetail();
+  renderCal();
 }
 
 // ═══════════════════════════════════════════
