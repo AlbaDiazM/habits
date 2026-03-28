@@ -313,9 +313,12 @@ var H={
     {id:'naturaleza',label:'Naturaleza',emoji:'🌲'}
   ],
   body:[
-    {id:'hipopresivos',label:'Hipopresivos',emoji:'🧘'},
-    {id:'pastillas',label:'Pastillas & suplementos',emoji:'💊'},
-    {id:'cremas',label:'Cremas',emoji:'🧴'}
+    {id:'yoga',label:'Yoga',emoji:'🕉️'},
+    {id:'estiramientos',label:'Estiramientos',emoji:'🤸'},
+    {id:'bailar',label:'Bailar',emoji:'💃'},
+    {id:'masaje',label:'Masaje / Cremas',emoji:'🧴'},
+    {id:'pastillas',label:'Suplementos / Pastillas',emoji:'💊'},
+    {id:'hipopresivos',label:'Hipopresivos',emoji:'🧘'}
   ],
   mind:[
     {id:'planificacion',label:'Planificación',emoji:'📋'},
@@ -346,17 +349,31 @@ function gscore(g){
   var done=H[g].filter(function(h){return ST[h.id]}).length;
   return {done:done,total:H[g].length,pct:H[g].length?done/H[g].length:0};
 }
+// Scoring:
+// Base: weighted 60% of total (each base habit = 60%/6 = 10%)
+// Body & Mind: each habit = 5%, can exceed 100% total (muñeco always happy if >100%)
 function tscore(){
-  var t=0; GK.forEach(function(g){t+=gscore(g).pct*GW[g]}); return t;
+  var baseS=gscore('base').pct*0.60;
+  var bodyDone=H['body'].filter(function(h){return ST[h.id]}).length;
+  var mindDone=H['mind'].filter(function(h){return ST[h.id]}).length;
+  var extras=(bodyDone+mindDone)*0.05;
+  return Math.min(1, baseS+extras);
 }
 function gscoreFromState(g,s){
   var done=H[g].filter(function(h){return s[h.id]}).length;
   return H[g].length?done/H[g].length:0;
 }
+function tscoreFromState(s){
+  var baseDone=H['base'].filter(function(h){return s[h.id]}).length;
+  var baseS=(H['base'].length?baseDone/H['base'].length:0)*0.60;
+  var bodyDone=H['body'].filter(function(h){return s[h.id]}).length;
+  var mindDone=H['mind'].filter(function(h){return s[h.id]}).length;
+  var extras=(bodyDone+mindDone)*0.05;
+  return Math.min(1, baseS+extras);
+}
 function dpct(y,m,d){
-  var s=ls(y,m,d),t=0;
-  GK.forEach(function(g){t+=gscoreFromState(g,s)*GW[g]});
-  return t;
+  var s=ls(y,m,d);
+  return tscoreFromState(s);
 }
 
 // ═══════════════════════════════════════════
@@ -417,16 +434,25 @@ function updateAll(){
     document.getElementById(GPCTS[i]).textContent=pstr;
     document.getElementById(GMRS[i]).textContent=pstr;
   });
-  var pct=tscore();
-  document.getElementById('figRed').style.opacity=pct<0.30?1:0;
-  document.getElementById('figOrange').style.opacity=(pct>=0.30&&pct<0.65)?1:0;
-  document.getElementById('figGreen').style.opacity=pct>=0.65?1:0;
-  var p=Math.round(pct*100);
+  // Raw score before capping (for display and figure)
+  var baseS=gscore('base').pct*0.60;
+  var bodyDone=H['body'].filter(function(h){return ST[h.id]}).length;
+  var mindDone=H['mind'].filter(function(h){return ST[h.id]}).length;
+  var rawScore=baseS+(bodyDone+mindDone)*0.05;
+  var pct=Math.min(1,rawScore);
+  var over100=rawScore>=1;
+
+  // Figure: if over 100% always green, otherwise red/orange/green
+  document.getElementById('figRed').style.opacity=(!over100&&pct<0.30)?1:0;
+  document.getElementById('figOrange').style.opacity=(!over100&&pct>=0.30&&pct<0.65)?1:0;
+  document.getElementById('figGreen').style.opacity=(over100||pct>=0.65)?1:0;
+
+  var p=Math.round(rawScore*100);
   document.getElementById('snum').textContent=p+'%';
   document.getElementById('snum').style.color=pct<0.3?'#e8845a':pct<0.65?'#e8c25a':'#3ecf82';
-  var moods=[[0,'Empieza tu día ✨'],[0.15,'Primeros pasos 🌱'],[0.35,'Construyendo impulso 🔥'],[0.55,'Buen progreso 💪'],[0.75,'Casi perfecta 🌟'],[0.95,'¡Día perfecto! 🎉']];
+  var moods=[[0,'Empieza tu día ✨'],[0.15,'Primeros pasos 🌱'],[0.35,'Construyendo impulso 🔥'],[0.55,'Buen progreso 💪'],[0.75,'Casi perfecta 🌟'],[0.95,'¡Día perfecto! 🎉'],[1.0,'¡Modo bestia activado! 🔥🎉']];
   var lbl=moods[0][1];
-  moods.forEach(function(m){if(pct>=m[0])lbl=m[1]});
+  moods.forEach(function(m){if(rawScore>=m[0])lbl=m[1]});
   document.getElementById('mood').textContent=lbl;
 }
 
@@ -504,6 +530,30 @@ function importData(){
 // ═══════════════════════════════════════════
 var CY,CM;
 function initCal(){var t=new Date();CY=t.getFullYear();CM=t.getMonth()}
+
+// Update a single calendar cell without redrawing the whole grid
+function updateCalCell(y,m,d){
+  if(y!==CY||m!==CM)return; // not visible month
+  var cells=document.querySelectorAll('#cgrid .ccell:not(.empty)');
+  // cells index = d - 1 (offset already applied in grid)
+  var first=new Date(CY,CM,1).getDay();
+  var off=(first===0)?6:first-1;
+  var grid=document.getElementById('cgrid');
+  var allCells=grid.children;
+  var cellIndex=off+(d-1);
+  if(cellIndex>=allCells.length)return;
+  var cell=allCells[cellIndex];
+  var gp=getGroupPcts(y,m,d);
+  var today=new Date();
+  var isT=(d===today.getDate()&&m===today.getMonth()&&y===today.getFullYear());
+  // Replace just the svg inside the cell
+  var oldSvg=cell.querySelector('svg');
+  if(oldSvg){
+    var tmp=document.createElement('div');
+    tmp.innerHTML=makeRingSVG(gp.base,gp.body,gp.mind,isT);
+    cell.replaceChild(tmp.firstChild, oldSvg);
+  }
+}
 function chMon(d){
   CM+=d;
   if(CM<0){CM=11;CY--} if(CM>11){CM=0;CY++}
@@ -530,7 +580,9 @@ function renderCal(){
   var today=new Date();
   document.getElementById('monname').textContent=MONS[CM]+' '+CY;
   var grid=document.getElementById('cgrid');
-  grid.innerHTML=''; document.getElementById('ddbox').innerHTML='';
+  grid.innerHTML='';
+  // Only clear ddbox if no day is currently selected
+  if(VIEW_Y===undefined){ document.getElementById('ddbox').innerHTML=''; }
   var first=new Date(CY,CM,1).getDay(),off=(first===0)?6:first-1;
   for(var i=0;i<off;i++){var e=document.createElement('div');e.className='ccell empty';e.innerHTML='<svg viewBox="0 0 30 30" style="width:100%"></svg>';grid.appendChild(e)}
   var dim=new Date(CY,CM+1,0).getDate();
@@ -549,18 +601,19 @@ var VIEW_Y, VIEW_M, VIEW_D;
 
 function showDay(y,m,d){
   VIEW_Y=y; VIEW_M=m; VIEW_D=d;
-  renderDayDetail();
-  document.getElementById('ddbox').scrollIntoView({behavior:'smooth',block:'start'});
+  renderDayDetail(false);
+  setTimeout(function(){
+    document.getElementById('ddbox').scrollIntoView({behavior:'smooth',block:'start'});
+  },50);
 }
 
-function renderDayDetail(){
+function renderDayDetail(noScroll){
   var y=VIEW_Y,m=VIEW_M,d=VIEW_D;
   var T2=td();
   var isToday=(y===T2[0]&&m===T2[1]&&d===T2[2]);
   var st=isToday?ST:ls(y,m,d);
   var box=document.getElementById('ddbox');
 
-  // Rings summary
   var rh='';
   GK.forEach(function(g){
     var done=H[g].filter(function(h){return st[h.id]}).length;
@@ -568,39 +621,41 @@ function renderDayDetail(){
     rh+='<div class="ddr"><div class="ddrval" style="color:'+GC[g]+'">'+pp+'%</div><div class="ddrlbl">'+{base:'Base',body:'Cuerpo',mind:'Mente'}[g]+'</div></div>';
   });
 
-  // Habit rows — all clickable (past or today)
-  var hh='';
-  ALL.forEach(function(h){
-    var done=!!st[h.id];
-    hh+='<div class="ddhrow'+(done?' done':'')+'" onclick="togglePastHabit(''+y+'',''+m+'',''+d+'',''+h.id+'')">'
-      +'<div class="ddcheck">'+(done?'✓':'')+'</div>'+h.emoji+' '+h.label+'</div>';
-  });
-
   var dateStr=d+' de '+MONS[m]+' '+y;
   box.innerHTML='<div class="ddetail">'
     +'<div class="ddetail-header">'
     +'<div class="ddetail-date">'+dateStr+'</div>'
-    +'<div class="edit-badge">✎ editable</div>'
+    +'<div class="edit-badge">&#9998; editable</div>'
     +'</div>'
     +'<div class="ddrings">'+rh+'</div>'
-    +hh
+    +'<div id="dayHabitList"></div>'
     +'</div>';
+
+  var list=document.getElementById('dayHabitList');
+  ALL.forEach(function(h){
+    var done=!!st[h.id];
+    var row=document.createElement('div');
+    row.className='ddhrow'+(done?' done':'');
+    row.innerHTML='<div class="ddcheck">'+(done?'&#10003;':'')+'</div>'+h.emoji+' '+h.label;
+    row.addEventListener('click',(function(hid){
+      return function(){ togglePastHabit(y,m,d,hid); };
+    })(h.id));
+    list.appendChild(row);
+  });
 }
 
 function togglePastHabit(y,m,d,id){
-  y=parseInt(y);m=parseInt(m);d=parseInt(d);
   var T2=td();
   var isToday=(y===T2[0]&&m===T2[1]&&d===T2[2]);
   var st=isToday?ST:ls(y,m,d);
   st[id]=!st[id];
   ss(y,m,d,st);
-  // If editing today, keep ST in sync
   if(isToday){ ST=st; updateAll(); }
-  // Re-render detail and calendar
-  renderDayDetail();
-  renderCal();
+  // Re-render detail in place without scroll or calendar reset
+  renderDayDetail(true);
+  // Update just the affected calendar cell silently
+  updateCalCell(y,m,d);
 }
-
 // ═══════════════════════════════════════════
 // ANALYSIS
 // ═══════════════════════════════════════════
